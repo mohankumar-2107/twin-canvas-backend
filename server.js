@@ -42,6 +42,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('draw', (data) => {
+        console.log(`Draw event received for room: ${data.room}`);
         socket.to(data.room).emit('draw', data);
     });
 
@@ -72,4 +73,5 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, () => {
     console.log(`TwinCanvas server running on http://localhost:${PORT}`);
+
 });
