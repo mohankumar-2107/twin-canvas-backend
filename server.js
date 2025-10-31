@@ -29,16 +29,15 @@ io.on('connection', (socket) => {
 
         rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
         console.log(`${userName} (${socket.id}) joined room: ${room}`);
-
+        
         const userNames = rooms[room].map(user => user.name);
         io.to(room).emit('update_users', userNames);
     });
-    
-    // --- ADDED VOICE CHAT LOGIC ---
+
+    // --- ADDED VOICE CHAT SIGNALING EVENTS ---
     socket.on('ready-for-voice', ({ room }) => {
         const user = rooms[room]?.find(u => u.id === socket.id);
         if (user) user.voiceReady = true;
-        // Tell everyone else this new user is ready for voice
         socket.to(room).emit('user-joined-voice', socket.id);
     });
 
@@ -70,7 +69,7 @@ io.on('connection', (socket) => {
             const userIndex = rooms[room].findIndex(user => user.id === socket.id);
             if (userIndex !== -1) {
                 rooms[room].splice(userIndex, 1);
-                io.to(room).emit('user-left-voice', socket.id);
+                io.to(room).emit('user-left-voice', socket.id); // Notify others user left voice
                 const userNames = rooms[room].map(user => user.name);
                 io.to(room).emit('update_users', userNames);
                 if (rooms[room].length === 0) delete rooms[room];
