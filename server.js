@@ -22,14 +22,38 @@ io.on('connection', (socket) => {
         const { room, userName } = data;
         socket.join(room);
         if (!rooms[room]) rooms[room] = [];
-        rooms[room].push({ id: socket.id, name: userName });
+
+        // When a new user joins, tell them about existing users ready for voice
+        const existingVoiceUsers = rooms[room].filter(user => user.voiceReady).map(user => user.id);
+        socket.emit('existing-voice-users', existingVoiceUsers);
+
+        rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
         console.log(`${userName} (${socket.id}) joined room: ${room}`);
 
-        // --- 1. ADD THIS ---
-        // Send the updated user list to everyone in the room
         const userNames = rooms[room].map(user => user.name);
         io.to(room).emit('update_users', userNames);
     });
+    
+    // --- ADDED VOICE CHAT LOGIC ---
+    socket.on('ready-for-voice', ({ room }) => {
+        const user = rooms[room]?.find(u => u.id === socket.id);
+        if (user) user.voiceReady = true;
+        // Tell everyone else this new user is ready for voice
+        socket.to(room).emit('user-joined-voice', socket.id);
+    });
+
+    socket.on('voice-offer', (data) => {
+        socket.to(data.to).emit('voice-offer', { offer: data.offer, from: socket.id });
+    });
+
+    socket.on('voice-answer', (data) => {
+        socket.to(data.to).emit('voice-answer', { answer: data.answer, from: socket.id });
+    });
+
+    socket.on('ice-candidate', (data) => {
+        socket.to(data.to).emit('ice-candidate', { candidate: data.candidate, from: socket.id });
+    });
+    // --- END OF VOICE CHAT LOGIC ---
 
     socket.on('draw', (data) => {
         console.log(`Draw event received for room: ${data.room}`);
@@ -46,15 +70,10 @@ io.on('connection', (socket) => {
             const userIndex = rooms[room].findIndex(user => user.id === socket.id);
             if (userIndex !== -1) {
                 rooms[room].splice(userIndex, 1);
-                
-                // --- 2. ADD THIS ---
-                // Send the updated list after a user leaves
+                io.to(room).emit('user-left-voice', socket.id);
                 const userNames = rooms[room].map(user => user.name);
                 io.to(room).emit('update_users', userNames);
-
-                if (rooms[room].length === 0) {
-                    delete rooms[room];
-                }
+                if (rooms[room].length === 0) delete rooms[room];
                 break;
             }
         }
