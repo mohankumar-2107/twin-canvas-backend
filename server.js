@@ -18,6 +18,7 @@ const rooms = {};
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
+    // --- ORIGINAL DRAWING ROOM HANDLER ---
     socket.on('join_room', (data) => {
         const { room, userName } = data;
         socket.join(room);
@@ -28,44 +29,44 @@ io.on('connection', (socket) => {
         socket.emit('existing-voice-users', existingVoiceUsers);
 
         rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-        console.log(`${userName} (${socket.id}) joined room: ${room}`);
+        console.log(`${userName} (${socket.id}) joined DRAW room: ${room}`);
         
         // --- THIS PART IS FOR THE USER LOGOS ---
         const userNames = rooms[room].map(user => user.name);
         io.to(room).emit('update_users', userNames);
     });
-  // --- ADD THESE NEW HANDLERS ---
-// You can add them right below your existing 'join_room' handler
 
-socket.on('join_movie_room', (data) => {
-    const { room, userName } = data;
-    socket.join(room);
-    if (!rooms[room]) rooms[room] = [];
+    // --- NEW MOVIE ROOM HANDLER ---
+    socket.on('join_movie_room', (data) => {
+        const { room, userName } = data;
+        socket.join(room);
+        if (!rooms[room]) rooms[room] = [];
 
-    // Reuse all the voice and user logo logic
-    const existingVoiceUsers = rooms[room].filter(user => user.voiceReady).map(user => user.id);
-    socket.emit('existing-voice-users', existingVoiceUsers);
+        // Reuse all the voice and user logo logic
+        const existingVoiceUsers = rooms[room].filter(user => user.voiceReady).map(user => user.id);
+        socket.emit('existing-voice-users', existingVoiceUsers);
 
-    rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-    console.log(`${userName} (${socket.id}) joined MOVIE room: ${room}`);
-    
-    const userNames = rooms[room].map(user => user.name);
-    io.to(room).emit('update_users', userNames);
-});
+        rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
+        console.log(`${userName} (${socket.id}) joined MOVIE room: ${room}`);
+        
+        const userNames = rooms[room].map(user => user.name);
+        io.to(room).emit('update_users', userNames);
+    });
 
-socket.on('video_play', (data) => {
-    socket.to(data.room).emit('video_play');
-});
+    // --- NEW MOVIE SYNC HANDLERS ---
+    socket.on('video_play', (data) => {
+        socket.to(data.room).emit('video_play');
+    });
 
-socket.on('video_pause', (data) => {
-    socket.to(data.room).emit('video_pause');
-});
+    socket.on('video_pause', (data) => {
+        socket.to(data.room).emit('video_pause');
+    });
 
-socket.on('video_seek', (data) => {
-    socket.to(data.room).emit('video_seek', data.time);
-});
+    socket.on('video_seek', (data) => {
+        socket.to(data.room).emit('video_seek', data.time);
+    });
 
-    // --- ADDED VOICE CHAT SIGNALING EVENTS ---
+    // --- SHARED VOICE CHAT SIGNALING EVENTS ---
     socket.on('ready-for-voice', ({ room }) => {
         const user = rooms[room]?.find(u => u.id === socket.id);
         if (user) user.voiceReady = true;
@@ -85,6 +86,7 @@ socket.on('video_seek', (data) => {
     });
     // --- END OF VOICE CHAT LOGIC ---
 
+    // --- ORIGINAL DRAWING HANDLERS ---
     socket.on('draw', (data) => {
         console.log(`Draw event received for room: ${data.room}`);
         socket.to(data.room).emit('draw', data);
@@ -98,17 +100,20 @@ socket.on('video_seek', (data) => {
         socket.to(data.room).emit('undo', { state: data.state });
     });
 
+    // --- SHARED DISCONNECT HANDLER ---
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
         for (const room in rooms) {
             const userIndex = rooms[room].findIndex(user => user.id === socket.id);
             if (userIndex !== -1) {
                 rooms[room].splice(userIndex, 1);
+                
                 // --- THIS PART IS FOR VOICE & LOGOS ---
                 io.to(room).emit('user-left-voice', socket.id); 
                 const userNames = rooms[room].map(user => user.name);
                 io.to(room).emit('update_users', userNames);
                 // --- END OF FIX ---
+                
                 if (rooms[room].length === 0) delete rooms[room];
                 break;
             }
@@ -116,8 +121,6 @@ socket.on('video_seek', (data) => {
     });
 });
 
-
 server.listen(PORT, () => {
     console.log(`TwinCanvas server running on http://localhost:${PORT}`);
 });
-
