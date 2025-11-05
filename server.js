@@ -1,91 +1,108 @@
+// server.js
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const { Server } = require('socket.io'); // <-- fix: get Server class
 
 const app = express();
 const server = http.createServer(app);
-
-const io = new socketIo.Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] }
 });
 
 const PORT = process.env.PORT || 3000;
-const rooms = {};
+const rooms = {}; // { [room]: [{ id, name, voiceReady }] }
 
 io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.id}`);
+  console.log(`User connected: ${socket.id}`);
 
-    socket.on('join_room', (data) => {
-        const { room, userName } = data;
-        socket.join(room);
-        if (!rooms[room]) rooms[room] = [];
+  // --- ROOM JOIN (movie room) ---
+  socket.on('join_movie_room', ({ room, userName }) => {
+    socket.join(room);
+    if (!rooms[room]) rooms[room] = [];
 
-        // --- THIS PART IS FOR THE VOICE CHAT ---
-        const existingVoiceUsers = rooms[room].filter(user => user.voiceReady).map(user => user.id);
-        socket.emit('existing-voice-users', existingVoiceUsers);
+    // send list of users who already declared voice readiness
+    const existingVoiceUsers = rooms[room]
+      .filter(u => u.voiceReady)
+      .map(u => u.id);
+    socket.emit('existing-voice-users', existingVoiceUsers);
 
-        rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-        console.log(`${userName} (${socket.id}) joined room: ${room}`);
-        
-        // --- THIS PART IS FOR THE USER LOGOS ---
-        const userNames = rooms[room].map(user => user.name);
-        io.to(room).emit('update_users', userNames);
-    });
+    // add this user to room state
+    rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
+    console.log(`${userName} (${socket.id}) joined room: ${room}`);
 
-    // --- ADDED VOICE CHAT SIGNALING EVENTS ---
-    socket.on('ready-for-voice', ({ room }) => {
-        const user = rooms[room]?.find(u => u.id === socket.id);
-        if (user) user.voiceReady = true;
-        socket.to(room).emit('user-joined-voice', socket.id);
-    });
+    // update name badges
+    const userNames = rooms[room].map(u => u.name);
+    io.to(room).emit('update_users', userNames);
 
-    socket.on('voice-offer', (data) => {
-        socket.to(data.to).emit('voice-offer', { offer: data.offer, from: socket.id });
-    });
+    // keep track which room this socket is in (for cleanup)
+    socket.data.room = room;
+    socket.data.name = userName;
+  });
 
-    socket.on('voice-answer', (data) => {
-        socket.to(data.to).emit('voice-answer', { answer: data.answer, from: socket.id });
-    });
+  // --- MIC / VOICE SIGNALING ---
+  socket.on('ready-for-voice', ({ room }) => {
+    const user = rooms[room]?.find(u => u.id === socket.id);
+    if (user) user.voiceReady = true;
+    // notify others that this user is ready to establish P2P
+    socket.to(room).emit('user-joined-voice', { socketId: socket.id });
+  });
 
-    socket.on('ice-candidate', (data) => {
-        socket.to(data.to).emit('ice-candidate', { candidate: data.candidate, from: socket.id });
-    });
-    // --- END OF VOICE CHAT LOGIC ---
+  socket.on('voice-offer', ({ room, to, offer }) => {
+    io.to(to).emit('voice-offer', { from: socket.id, offer });
+  });
 
-    socket.on('draw', (data) => {
-        console.log(`Draw event received for room: ${data.room}`);
-        socket.to(data.room).emit('draw', data);
-    });
+  socket.on('voice-answer', ({ room, to, answer }) => {
+    io.to(to).emit('voice-answer', { from: socket.id, answer });
+  });
 
-    socket.on('clear', (data) => {
-        socket.to(data.room).emit('clear');
-    });
+  socket.on('ice-candidate', ({ room, to, candidate }) => {
+    io.to(to).emit('ice-candidate', { from: socket.id, candidate });
+  });
 
-    socket.on('undo', (data) => {
-        socket.to(data.room).emit('undo', { state: data.state });
-    });
+  // --- VIDEO SYNC EVENTS ---
+  socket.on('video_play', ({ room }) => {
+    socket.to(room).emit('video_play');
+  });
 
-    socket.on('disconnect', () => {
-        console.log(`User disconnected: ${socket.id}`);
-        for (const room in rooms) {
-            const userIndex = rooms[room].findIndex(user => user.id === socket.id);
-            if (userIndex !== -1) {
-                rooms[room].splice(userIndex, 1);
-                // --- THIS PART IS FOR VOICE & LOGOS ---
-                io.to(room).emit('user-left-voice', socket.id); 
-                const userNames = rooms[room].map(user => user.name);
-                io.to(room).emit('update_users', userNames);
-                // --- END OF FIX ---
-                if (rooms[room].length === 0) delete rooms[room];
-                break;
-            }
-        }
-    });
+  socket.on('video_pause', ({ room }) => {
+    socket.to(room).emit('video_pause');
+  });
+
+  socket.on('video_seek', ({ room, time }) => {
+    socket.to(room).emit('video_seek', time);
+  });
+
+  // --- OPTIONAL: drawing events (pass-through) ---
+  socket.on('draw', (data) => {
+    const { room } = data;
+    socket.to(room).emit('draw', data);
+  });
+
+  socket.on('clear', ({ room }) => {
+    socket.to(room).emit('clear');
+  });
+
+  socket.on('undo', ({ room, state }) => {
+    socket.to(room).emit('undo', { state });
+  });
+
+  // --- CLEANUP ---
+  socket.on('disconnect', () => {
+    const room = socket.data.room;
+    console.log(`User disconnected: ${socket.id}`);
+    if (!room || !rooms[room]) return;
+
+    const idx = rooms[room].findIndex(u => u.id === socket.id);
+    if (idx !== -1) {
+      rooms[room].splice(idx, 1);
+      io.to(room).emit('user-left-voice', socket.id);
+      const userNames = rooms[room].map(u => u.name);
+      io.to(room).emit('update_users', userNames);
+      if (rooms[room].length === 0) delete rooms[room];
+    }
+  });
 });
 
 server.listen(PORT, () => {
-    console.log(`TwinCanvas server running on http://localhost:${PORT}`);
+  console.log(`TwinCanvas server running on http://localhost:${PORT}`);
 });
