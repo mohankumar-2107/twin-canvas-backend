@@ -75,7 +75,6 @@ io.on('connection', (socket) => {
 
   // --- VIDEO SYNC EVENTS (THE FIX) ---
   // We use io.to() to broadcast to EVERYONE, including the sender.
-  // This ensures the sender's UI is also controlled by the server, preventing loops.
   socket.on('video_play', (data) => {
     io.to(data.room).emit('video_play');
   });
