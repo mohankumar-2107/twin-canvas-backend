@@ -18,102 +18,85 @@ const rooms = {};
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    // --- ORIGINAL DRAWING ROOM HANDLER ---
+    // --- Drawing Room Handler ---
     socket.on('join_room', (data) => {
         const { room, userName } = data;
         socket.join(room);
         if (!rooms[room]) rooms[room] = [];
-
-        // --- THIS PART IS FOR THE VOICE CHAT ---
         const existingVoiceUsers = rooms[room].filter(user => user.voiceReady).map(user => user.id);
         socket.emit('existing-voice-users', existingVoiceUsers);
-
         rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
         console.log(`${userName} (${socket.id}) joined DRAW room: ${room}`);
-        
-        // --- THIS PART IS FOR THE USER LOGOS ---
         const userNames = rooms[room].map(user => user.name);
         io.to(room).emit('update_users', userNames);
     });
 
-    // --- NEW MOVIE ROOM HANDLER ---
+    // --- Movie Room Handler ---
     socket.on('join_movie_room', (data) => {
         const { room, userName } = data;
         socket.join(room);
         if (!rooms[room]) rooms[room] = [];
-
-        // Reuse all the voice and user logo logic
         const existingVoiceUsers = rooms[room].filter(user => user.voiceReady).map(user => user.id);
         socket.emit('existing-voice-users', existingVoiceUsers);
-
         rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
         console.log(`${userName} (${socket.id}) joined MOVIE room: ${room}`);
-        
         const userNames = rooms[room].map(user => user.name);
         io.to(room).emit('update_users', userNames);
     });
 
-    // --- NEW MOVIE SYNC HANDLERS ---
+    // --- MOVIE SYNC FIX ---
+    // Broadcast to EVERYONE (io.to) not just others (socket.to)
     socket.on('video_play', (data) => {
-        socket.to(data.room).emit('video_play');
+        io.to(data.room).emit('video_play');
     });
 
     socket.on('video_pause', (data) => {
-        socket.to(data.room).emit('video_pause');
+        io.to(data.room).emit('video_pause');
     });
 
     socket.on('video_seek', (data) => {
-        socket.to(data.room).emit('video_seek', data.time);
+        io.to(data.room).emit('video_seek', data.time);
     });
+    // --- END OF FIX ---
 
-    // --- SHARED VOICE CHAT SIGNALING EVENTS ---
+    // --- Voice Chat Handlers ---
     socket.on('ready-for-voice', ({ room }) => {
         const user = rooms[room]?.find(u => u.id === socket.id);
         if (user) user.voiceReady = true;
         socket.to(room).emit('user-joined-voice', socket.id);
     });
-
     socket.on('voice-offer', (data) => {
         socket.to(data.to).emit('voice-offer', { offer: data.offer, from: socket.id });
     });
-
     socket.on('voice-answer', (data) => {
         socket.to(data.to).emit('voice-answer', { answer: data.answer, from: socket.id });
     });
-
     socket.on('ice-candidate', (data) => {
         socket.to(data.to).emit('ice-candidate', { candidate: data.candidate, from: socket.id });
     });
-    // --- END OF VOICE CHAT LOGIC ---
 
-    // --- ORIGINAL DRAWING HANDLERS ---
+    // --- Drawing Handlers ---
     socket.on('draw', (data) => {
         console.log(`Draw event received for room: ${data.room}`);
         socket.to(data.room).emit('draw', data);
     });
-
     socket.on('clear', (data) => {
         socket.to(data.room).emit('clear');
     });
-
     socket.on('undo', (data) => {
         socket.to(data.room).emit('undo', { state: data.state });
     });
 
-    // --- SHARED DISCONNECT HANDLER ---
+    // --- Disconnect Handler ---
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
         for (const room in rooms) {
             const userIndex = rooms[room].findIndex(user => user.id === socket.id);
             if (userIndex !== -1) {
                 rooms[room].splice(userIndex, 1);
-                
-                // --- THIS PART IS FOR VOICE & LOGOS ---
                 io.to(room).emit('user-left-voice', socket.id); 
                 const userNames = rooms[room].map(user => user.name);
                 io.to(room).emit('update_users', userNames);
-                // --- END OF FIX ---
-                
                 if (rooms[room].length === 0) delete rooms[room];
                 break;
             }
