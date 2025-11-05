@@ -34,6 +34,36 @@ io.on('connection', (socket) => {
         const userNames = rooms[room].map(user => user.name);
         io.to(room).emit('update_users', userNames);
     });
+  // --- ADD THESE NEW HANDLERS ---
+// You can add them right below your existing 'join_room' handler
+
+socket.on('join_movie_room', (data) => {
+    const { room, userName } = data;
+    socket.join(room);
+    if (!rooms[room]) rooms[room] = [];
+
+    // Reuse all the voice and user logo logic
+    const existingVoiceUsers = rooms[room].filter(user => user.voiceReady).map(user => user.id);
+    socket.emit('existing-voice-users', existingVoiceUsers);
+
+    rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
+    console.log(`${userName} (${socket.id}) joined MOVIE room: ${room}`);
+    
+    const userNames = rooms[room].map(user => user.name);
+    io.to(room).emit('update_users', userNames);
+});
+
+socket.on('video_play', (data) => {
+    socket.to(data.room).emit('video_play');
+});
+
+socket.on('video_pause', (data) => {
+    socket.to(data.room).emit('video_pause');
+});
+
+socket.on('video_seek', (data) => {
+    socket.to(data.room).emit('video_seek', data.time);
+});
 
     // --- ADDED VOICE CHAT SIGNALING EVENTS ---
     socket.on('ready-for-voice', ({ room }) => {
@@ -86,6 +116,8 @@ io.on('connection', (socket) => {
     });
 });
 
+
 server.listen(PORT, () => {
     console.log(`TwinCanvas server running on http://localhost:${PORT}`);
 });
+
