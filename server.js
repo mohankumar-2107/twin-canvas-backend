@@ -1,7 +1,6 @@
-// server.js
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io'); // <-- fix: get Server class
+const { Server } = require('socket.io'); // Use Server class
 
 const app = express();
 const server = http.createServer(app);
@@ -15,75 +14,85 @@ const rooms = {}; // { [room]: [{ id, name, voiceReady }] }
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  // --- ROOM JOIN (movie room) ---
-  socket.on('join_movie_room', ({ room, userName }) => {
+  // --- DRAWING ROOM HANDLER (RESTORED) ---
+  socket.on('join_room', ({ room, userName }) => {
     socket.join(room);
     if (!rooms[room]) rooms[room] = [];
 
-    // send list of users who already declared voice readiness
     const existingVoiceUsers = rooms[room]
       .filter(u => u.voiceReady)
       .map(u => u.id);
     socket.emit('existing-voice-users', existingVoiceUsers);
 
-    // add this user to room state
     rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-    console.log(`${userName} (${socket.id}) joined room: ${room}`);
+    console.log(`${userName} (${socket.id}) joined DRAW room: ${room}`);
 
-    // update name badges
     const userNames = rooms[room].map(u => u.name);
     io.to(room).emit('update_users', userNames);
 
-    // keep track which room this socket is in (for cleanup)
-    socket.data.room = room;
+    socket.data.room = room; // For cleanup
     socket.data.name = userName;
   });
 
-  // --- MIC / VOICE SIGNALING ---
+  // --- MOVIE ROOM HANDLER ---
+  socket.on('join_movie_room', ({ room, userName }) => {
+    socket.join(room);
+    if (!rooms[room]) rooms[room] = [];
+
+    const existingVoiceUsers = rooms[room]
+      .filter(u => u.voiceReady)
+      .map(u => u.id);
+    socket.emit('existing-voice-users', existingVoiceUsers);
+
+    rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
+    console.log(`${userName} (${socket.id}) joined MOVIE room: ${room}`);
+
+    const userNames = rooms[room].map(u => u.name);
+    io.to(room).emit('update_users', userNames);
+
+    socket.data.room = room; // For cleanup
+    socket.data.name = userName;
+  });
+
+  // --- MIC / VOICE SIGNALING (Works for both rooms) ---
   socket.on('ready-for-voice', ({ room }) => {
     const user = rooms[room]?.find(u => u.id === socket.id);
     if (user) user.voiceReady = true;
-    // notify others that this user is ready to establish P2P
     socket.to(room).emit('user-joined-voice', { socketId: socket.id });
   });
 
-  socket.on('voice-offer', ({ room, to, offer }) => {
-    io.to(to).emit('voice-offer', { from: socket.id, offer });
+  socket.on('voice-offer', (data) => {
+    socket.to(data.to).emit('voice-offer', { from: socket.id, offer: data.offer });
   });
 
-  socket.on('voice-answer', ({ room, to, answer }) => {
-    io.to(to).emit('voice-answer', { from: socket.id, answer });
+  socket.on('voice-answer', (data) => {
+    socket.to(data.to).emit('voice-answer', { from: socket.id, answer: data.answer });
   });
 
-  socket.on('ice-candidate', ({ room, to, candidate }) => {
-    io.to(to).emit('ice-candidate', { from: socket.id, candidate });
+  socket.on('ice-candidate', (data) => {
+    socket.to(data.to).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
   });
 
   // --- VIDEO SYNC EVENTS ---
-  socket.on('video_play', ({ room }) => {
-    socket.to(room).emit('video_play');
+  socket.on('video_play', (data) => {
+    io.to(data.room).emit('video_play');
+  });
+  socket.on('video_pause', (data) => {
+    io.to(data.room).emit('video_pause');
+  });
+  socket.on('video_seek', (data) => {
+    io.to(data.room).emit('video_seek', data.time);
   });
 
-  socket.on('video_pause', ({ room }) => {
-    socket.to(room).emit('video_pause');
-  });
-
-  socket.on('video_seek', ({ room, time }) => {
-    socket.to(room).emit('video_seek', time);
-  });
-
-  // --- OPTIONAL: drawing events (pass-through) ---
+  // --- DRAWING EVENTS ---
   socket.on('draw', (data) => {
-    const { room } = data;
-    socket.to(room).emit('draw', data);
+    socket.to(data.room).emit('draw', data);
   });
-
-  socket.on('clear', ({ room }) => {
-    socket.to(room).emit('clear');
+  socket.on('clear', (data) => {
+    socket.to(data.room).emit('clear');
   });
-
-  socket.on('undo', ({ room, state }) => {
-    socket.to(room).emit('undo', { state });
+  socket.on('undo', (data) => {
+    socket.to(data.room).emit('undo', { state: data.state });
   });
 
   // --- CLEANUP ---
