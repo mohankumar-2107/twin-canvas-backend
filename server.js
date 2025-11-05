@@ -44,20 +44,16 @@ io.on('connection', (socket) => {
         io.to(room).emit('update_users', userNames);
     });
 
-    // --- MOVIE SYNC FIX ---
-    // Broadcast to EVERYONE (io.to) not just others (socket.to)
+    // --- MOVIE SYNC (Broadcasts to EVERYONE) ---
     socket.on('video_play', (data) => {
         io.to(data.room).emit('video_play');
     });
-
     socket.on('video_pause', (data) => {
         io.to(data.room).emit('video_pause');
     });
-
     socket.on('video_seek', (data) => {
         io.to(data.room).emit('video_seek', data.time);
     });
-    // --- END OF FIX ---
 
     // --- Voice Chat Handlers ---
     socket.on('ready-for-voice', ({ room }) => {
