@@ -1,124 +1,121 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const { Server } = require('socket.io'); // Use Server class
 
 const app = express();
 const server = http.createServer(app);
-
-const io = new socketIo.Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] }
 });
 
 const PORT = process.env.PORT || 3000;
-const rooms = {};
+const rooms = {}; // { [room]: [{ id, name, voiceReady }] }
 
 io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.id}`);
+  console.log(`User connected: ${socket.id}`);
 
-    // --- HANDLER 1: DRAWING ROOM ---
-    socket.on('join_room', (data) => {
-        const { room, userName } = data;
-        socket.join(room);
-        if (!rooms[room]) rooms[room] = [];
+  // --- DRAWING ROOM HANDLER ---
+  socket.on('join_room', ({ room, userName }) => {
+    socket.join(room);
+    if (!rooms[room]) rooms[room] = [];
 
-        const existingVoiceUsers = rooms[room].filter(user => user.voiceReady).map(user => user.id);
-        socket.emit('existing-voice-users', existingVoiceUsers);
+    const existingVoiceUsers = rooms[room]
+      .filter(u => u.voiceReady)
+      .map(u => u.id);
+    socket.emit('existing-voice-users', existingVoiceUsers);
 
-        rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-        console.log(`${userName} (${socket.id}) joined DRAW room: ${room}`);
-        
-        const userNames = rooms[room].map(user => user.name);
-        io.to(room).emit('update_users', userNames);
-        
-        socket.data.room = room; // For cleanup
-    });
+    rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
+    console.log(`${userName} (${socket.id}) joined DRAW room: ${room}`);
 
-    // --- HANDLER 2: MOVIE ROOM (This was missing) ---
-    socket.on('join_movie_room', (data) => {
-        const { room, userName } = data;
-        socket.join(room);
-        if (!rooms[room]) rooms[room] = [];
+    const userNames = rooms[room].map(u => u.name);
+    io.to(room).emit('update_users', userNames);
 
-        const existingVoiceUsers = rooms[room].filter(user => user.voiceReady).map(user => user.id);
-        socket.emit('existing-voice-users', existingVoiceUsers);
+    socket.data.room = room; // For cleanup
+    socket.data.name = userName;
+  });
 
-        rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-        console.log(`${userName} (${socket.id}) joined MOVIE room: ${room}`);
-        
-        const userNames = rooms[room].map(user => user.name);
-        io.to(room).emit('update_users', userNames);
-        
-        socket.data.room = room; // For cleanup
-    });
+  // --- MOVIE ROOM HANDLER ---
+  socket.on('join_movie_room', ({ room, userName }) => {
+    socket.join(room);
+    if (!rooms[room]) rooms[room] = [];
 
-    // --- MOVIE SYNC HANDLERS (These were missing) ---
-    socket.on('video_play', (data) => {
-        io.to(data.room).emit('video_play');
-    });
+    const existingVoiceUsers = rooms[room]
+      .filter(u => u.voiceReady)
+      .map(u => u.id);
+    socket.emit('existing-voice-users', existingVoiceUsers);
 
-    socket.on('video_pause', (data) => {
-        io.to(data.room).emit('video_pause');
-    });
+    rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
+    console.log(`${userName} (${socket.id}) joined MOVIE room: ${room}`);
 
-    socket.on('video_seek', (data) => {
-        io.to(data.room).emit('video_seek', data.time);
-    });
+    const userNames = rooms[room].map(u => u.name);
+    io.to(room).emit('update_users', userNames);
 
-    // --- SHARED VOICE CHAT SIGNALING (Works for both rooms) ---
-    socket.on('ready-for-voice', ({ room }) => {
-        const user = rooms[room]?.find(u => u.id === socket.id);
-        if (user) user.voiceReady = true;
-        socket.to(room).emit('user-joined-voice', { socketId: socket.id });
-    });
+    socket.data.room = room; // For cleanup
+    socket.data.name = userName;
+  });
 
-    socket.on('voice-offer', (data) => {
-        socket.to(data.to).emit('voice-offer', { offer: data.offer, from: socket.id });
-    });
+  // --- MIC / VOICE SIGNALING (Works for both rooms) ---
+  socket.on('ready-for-voice', ({ room }) => {
+    const user = rooms[room]?.find(u => u.id === socket.id);
+    if (user) user.voiceReady = true;
+    socket.to(room).emit('user-joined-voice', { socketId: socket.id });
+  });
 
-    socket.on('voice-answer', (data) => {
-        socket.to(data.to).emit('voice-answer', { answer: data.answer, from: socket.id });
-    });
+  socket.on('voice-offer', (data) => {
+    socket.to(data.to).emit('voice-offer', { from: socket.id, offer: data.offer });
+  });
 
-    socket.on('ice-candidate', (data) => {
-        socket.to(data.to).emit('ice-candidate', { candidate: data.candidate, from: socket.id });
-    });
+  socket.on('voice-answer', (data) => {
+    socket.to(data.to).emit('voice-answer', { from: socket.id, answer: data.answer });
+  });
 
-    // --- DRAWING HANDLERS ---
-    socket.on('draw', (data) => {
-        console.log(`Draw event received for room: ${data.room}`);
-        socket.to(data.room).emit('draw', data);
-    });
+  socket.on('ice-candidate', (data) => {
+    socket.to(data.to).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
+  });
 
-    socket.on('clear', (data) => {
-        socket.to(data.room).emit('clear');
-    });
+  // --- VIDEO SYNC EVENTS (THE FIX) ---
+  // We use io.to() to broadcast to EVERYONE, including the sender.
+  // This ensures the sender's UI is also controlled by the server, preventing loops.
+  socket.on('video_play', (data) => {
+    io.to(data.room).emit('video_play');
+  });
 
-    socket.on('undo', (data) => {
-        socket.to(data.room).emit('undo', { state: data.state });
-    });
+  socket.on('video_pause', (data) => {
+    io.to(data.room).emit('video_pause');
+  });
 
-    // --- SHARED DISCONNECT HANDLER (Works for both rooms) ---
-    socket.on('disconnect', () => {
-        console.log(`User disconnected: ${socket.id}`);
-        const room = socket.data.room; // Get the room this socket was in
-        if (!room || !rooms[room]) return;
+  socket.on('video_seek', (data) => {
+    io.to(data.room).emit('video_seek', data.time);
+  });
 
-        const userIndex = rooms[room].findIndex(user => user.id === socket.id);
-        if (userIndex !== -1) {
-            rooms[room].splice(userIndex, 1);
-            
-            io.to(room).emit('user-left-voice', socket.id); 
-            const userNames = rooms[room].map(user => user.name);
-            io.to(room).emit('update_users', userNames);
-            
-            if (rooms[room].length === 0) delete rooms[room];
-        }
-    });
+  // --- DRAWING EVENTS ---
+  socket.on('draw', (data) => {
+    socket.to(data.room).emit('draw', data);
+  });
+  socket.on('clear', (data) => {
+    socket.to(data.room).emit('clear');
+  });
+  socket.on('undo', (data) => {
+    socket.to(data.room).emit('undo', { state: data.state });
+  });
+
+  // --- CLEANUP ---
+  socket.on('disconnect', () => {
+    const room = socket.data.room;
+    console.log(`User disconnected: ${socket.id}`);
+    if (!room || !rooms[room]) return;
+
+    const idx = rooms[room].findIndex(u => u.id === socket.id);
+    if (idx !== -1) {
+      rooms[room].splice(idx, 1);
+      io.to(room).emit('user-left-voice', socket.id);
+      const userNames = rooms[room].map(u => u.name);
+      io.to(room).emit('update_users', userNames);
+      if (rooms[room].length === 0) delete rooms[room];
+    }
+  });
 });
 
 server.listen(PORT, () => {
-    console.log(`TwinCanvas server running on http://localhost:${PORT}`);
+  console.log(`TwinCanvas server running on http://localhost:${PORT}`);
 });
