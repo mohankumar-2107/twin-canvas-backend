@@ -14,7 +14,7 @@ const rooms = {}; // { [room]: [{ id, name, voiceReady }] }
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  // --- DRAWING ROOM HANDLER (RESTORED) ---
+  // --- DRAWING ROOM HANDLER ---
   socket.on('join_room', ({ room, userName }) => {
     socket.join(room);
     if (!rooms[room]) rooms[room] = [];
@@ -73,13 +73,17 @@ io.on('connection', (socket) => {
     socket.to(data.to).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
   });
 
-  // --- VIDEO SYNC EVENTS ---
+  // --- VIDEO SYNC EVENTS (THE FIX) ---
+  // We use io.to() to broadcast to EVERYONE, including the sender.
+  // This ensures the sender's UI is also controlled by the server, preventing loops.
   socket.on('video_play', (data) => {
     io.to(data.room).emit('video_play');
   });
+
   socket.on('video_pause', (data) => {
     io.to(data.room).emit('video_pause');
   });
+
   socket.on('video_seek', (data) => {
     io.to(data.room).emit('video_seek', data.time);
   });
