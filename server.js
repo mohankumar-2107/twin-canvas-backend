@@ -12,7 +12,8 @@ const PORT = process.env.PORT || 3000;
 const rooms = {}; // { [room]: [{ id, name, voiceReady }] }
 
 io.on('connection', (socket) => {
-  console.log(User connected: ${socket.id});
+  // --- SYNTAX FIX ---
+  console.log(`User connected: ${socket.id}`);
 
   // --- DRAWING ROOM HANDLER ---
   socket.on('join_room', ({ room, userName }) => {
@@ -25,7 +26,8 @@ io.on('connection', (socket) => {
     socket.emit('existing-voice-users', existingVoiceUsers);
 
     rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-    console.log(${userName} (${socket.id}) joined DRAW room: ${room});
+    // --- SYNTAX FIX ---
+    console.log(`${userName} (${socket.id}) joined DRAW room: ${room}`);
 
     const userNames = rooms[room].map(u => u.name);
     io.to(room).emit('update_users', userNames);
@@ -45,7 +47,8 @@ io.on('connection', (socket) => {
     socket.emit('existing-voice-users', existingVoiceUsers);
 
     rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-    console.log(${userName} (${socket.id}) joined MOVIE room: ${room});
+    // --- SYNTAX FIX ---
+    console.log(`${userName} (${socket.id}) joined MOVIE room: ${room}`);
 
     const userNames = rooms[room].map(u => u.name);
     io.to(room).emit('update_users', userNames);
@@ -73,8 +76,7 @@ io.on('connection', (socket) => {
     socket.to(data.to).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
   });
 
-  // --- VIDEO SYNC EVENTS (THE FIX) ---
-  // We use io.to() to broadcast to EVERYONE, including the sender.
+  // --- VIDEO SYNC EVENTS ---
   socket.on('video_play', (data) => {
     io.to(data.room).emit('video_play');
   });
@@ -89,6 +91,7 @@ io.on('connection', (socket) => {
 
   // --- DRAWING EVENTS ---
   socket.on('draw', (data) => {
+    // Note: 'draw' events don't need console logs, but if you add one, use backticks!
     socket.to(data.room).emit('draw', data);
   });
   socket.on('clear', (data) => {
@@ -101,7 +104,8 @@ io.on('connection', (socket) => {
   // --- CLEANUP ---
   socket.on('disconnect', () => {
     const room = socket.data.room;
-    console.log(User disconnected: ${socket.id});
+    // --- SYNTAX FIX ---
+    console.log(`User disconnected: ${socket.id}`);
     if (!room || !rooms[room]) return;
 
     const idx = rooms[room].findIndex(u => u.id === socket.id);
@@ -116,5 +120,7 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
-  console.log(TwinCanvas server running on http://localhost:${PORT});
+  // --- SYNTAX FIX ---
+  console.log(`TwinCanvas server running on http://localhost:${PORT}`);
 });
+
