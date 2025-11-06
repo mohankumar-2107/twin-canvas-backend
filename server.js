@@ -14,7 +14,7 @@ const rooms = {}; // { [room]: [{ id, name, voiceReady }] }
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  // --- DRAWING ROOM HANDLER ---
+  // --- DRAWING ROOM HANDLER (Your working code) ---
   socket.on('join_room', ({ room, userName }) => {
     socket.join(room);
     if (!rooms[room]) rooms[room] = [];
@@ -34,7 +34,7 @@ io.on('connection', (socket) => {
     socket.data.name = userName;
   });
 
-  // --- MOVIE ROOM HANDLER ---
+  // --- NEW: MOVIE ROOM HANDLER (Added) ---
   socket.on('join_movie_room', ({ room, userName }) => {
     socket.join(room);
     if (!rooms[room]) rooms[room] = [];
@@ -54,10 +54,11 @@ io.on('connection', (socket) => {
     socket.data.name = userName;
   });
 
-  // --- MIC / VOICE SIGNALING (Works for both rooms) ---
+  // --- MIC / VOICE SIGNALING (Your working code) ---
   socket.on('ready-for-voice', ({ room }) => {
     const user = rooms[room]?.find(u => u.id === socket.id);
     if (user) user.voiceReady = true;
+    // --- FIX: Use correct { socketId: ... } object ---
     socket.to(room).emit('user-joined-voice', { socketId: socket.id });
   });
 
@@ -73,8 +74,8 @@ io.on('connection', (socket) => {
     socket.to(data.to).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
   });
 
-  // --- VIDEO SYNC EVENTS (THE FIX) ---
-  // We use io.to() to broadcast to EVERYONE, including the sender.
+  // --- NEW: VIDEO SYNC EVENTS (Added) ---
+  // We use io.to() to broadcast to EVERYONE, including the sender, to fix lag.
   socket.on('video_play', (data) => {
     io.to(data.room).emit('video_play');
   });
@@ -87,8 +88,9 @@ io.on('connection', (socket) => {
     io.to(data.room).emit('video_seek', data.time);
   });
 
-  // --- DRAWING EVENTS ---
+  // --- DRAWING EVENTS (Your working code) ---
   socket.on('draw', (data) => {
+    console.log(`Draw event received for room: ${data.room}`);
     socket.to(data.room).emit('draw', data);
   });
   socket.on('clear', (data) => {
@@ -98,7 +100,7 @@ io.on('connection', (socket) => {
     socket.to(data.room).emit('undo', { state: data.state });
   });
 
-  // --- CLEANUP ---
+  // --- CLEANUP (Updated to work for both rooms) ---
   socket.on('disconnect', () => {
     const room = socket.data.room;
     console.log(`User disconnected: ${socket.id}`);
