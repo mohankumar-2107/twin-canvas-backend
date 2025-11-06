@@ -30,7 +30,7 @@ io.on('connection', (socket) => {
     const userNames = rooms[room].map(u => u.name);
     io.to(room).emit('update_users', userNames);
 
-    socket.data.room = room; // For cleanup
+    socket.data.room = room;
     socket.data.name = userName;
   });
 
@@ -50,11 +50,18 @@ io.on('connection', (socket) => {
     const userNames = rooms[room].map(u => u.name);
     io.to(room).emit('update_users', userNames);
 
-    socket.data.room = room; // For cleanup
+    socket.data.room = room;
     socket.data.name = userName;
   });
 
-  // --- MIC / VOICE SIGNALING (Works for both rooms) ---
+  // ✅ ✅ ADD THIS — FIX REVERSE BROADCASTING
+  socket.on("request_movie_users", ({ room }) => {
+    const users = rooms[room]?.map(u => u.id) || [];
+    socket.emit("movie-users", users.filter(id => id !== socket.id));
+  });
+  // ✅ ✅ END FIX
+
+  // --- MIC / VOICE SIGNALING ---
   socket.on('ready-for-voice', ({ room }) => {
     const user = rooms[room]?.find(u => u.id === socket.id);
     if (user) user.voiceReady = true;
@@ -73,8 +80,7 @@ io.on('connection', (socket) => {
     socket.to(data.to).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
   });
 
-  // --- VIDEO SYNC EVENTS (THE FIX) ---
-  // We use io.to() to broadcast to EVERYONE, including the sender.
+  // --- VIDEO SYNC EVENTS ---
   socket.on('video_play', (data) => {
     io.to(data.room).emit('video_play');
   });
@@ -87,7 +93,7 @@ io.on('connection', (socket) => {
     io.to(data.room).emit('video_seek', data.time);
   });
 
-  // --- DRAWING EVENTS ---
+  // --- DRAW EVENTS ---
   socket.on('draw', (data) => {
     socket.to(data.room).emit('draw', data);
   });
@@ -98,7 +104,7 @@ io.on('connection', (socket) => {
     socket.to(data.room).emit('undo', { state: data.state });
   });
 
-  // --- CLEANUP ---
+  // --- DISCONNECT CLEANUP ---
   socket.on('disconnect', () => {
     const room = socket.data.room;
     console.log(`User disconnected: ${socket.id}`);
