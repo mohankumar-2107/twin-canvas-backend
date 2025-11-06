@@ -12,7 +12,6 @@ const PORT = process.env.PORT || 3000;
 const rooms = {}; // { [room]: [{ id, name, voiceReady }] }
 
 io.on('connection', (socket) => {
-  // --- SYNTAX FIX ---
   console.log(`User connected: ${socket.id}`);
 
   // --- DRAWING ROOM HANDLER ---
@@ -26,7 +25,6 @@ io.on('connection', (socket) => {
     socket.emit('existing-voice-users', existingVoiceUsers);
 
     rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-    // --- SYNTAX FIX ---
     console.log(`${userName} (${socket.id}) joined DRAW room: ${room}`);
 
     const userNames = rooms[room].map(u => u.name);
@@ -47,7 +45,6 @@ io.on('connection', (socket) => {
     socket.emit('existing-voice-users', existingVoiceUsers);
 
     rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
-    // --- SYNTAX FIX ---
     console.log(`${userName} (${socket.id}) joined MOVIE room: ${room}`);
 
     const userNames = rooms[room].map(u => u.name);
@@ -76,7 +73,8 @@ io.on('connection', (socket) => {
     socket.to(data.to).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
   });
 
-  // --- VIDEO SYNC EVENTS ---
+  // --- VIDEO SYNC EVENTS (THE FIX) ---
+  // We use io.to() to broadcast to EVERYONE, including the sender.
   socket.on('video_play', (data) => {
     io.to(data.room).emit('video_play');
   });
@@ -91,7 +89,6 @@ io.on('connection', (socket) => {
 
   // --- DRAWING EVENTS ---
   socket.on('draw', (data) => {
-    // Note: 'draw' events don't need console logs, but if you add one, use backticks!
     socket.to(data.room).emit('draw', data);
   });
   socket.on('clear', (data) => {
@@ -104,7 +101,6 @@ io.on('connection', (socket) => {
   // --- CLEANUP ---
   socket.on('disconnect', () => {
     const room = socket.data.room;
-    // --- SYNTAX FIX ---
     console.log(`User disconnected: ${socket.id}`);
     if (!room || !rooms[room]) return;
 
@@ -120,6 +116,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
-  // --- SYNTAX FIX ---
   console.log(`TwinCanvas server running on http://localhost:${PORT}`);
 });
