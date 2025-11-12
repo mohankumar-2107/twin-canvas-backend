@@ -15,7 +15,7 @@ const rooms = {}; // { [room]: [{ id, name, voiceReady }] }
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  // --- DRAWING ROOM HANDLER ---
+  // --- DRAWING ROOM HANDLER (No changes) ---
   socket.on('join_room', ({ room, userName }) => {
     socket.join(room);
     if (!rooms[room]) rooms[room] = [];
@@ -35,7 +35,7 @@ io.on('connection', (socket) => {
     socket.data.name = userName;
   });
 
-  // --- MOVIE ROOM HANDLER ---
+  // --- MOVIE ROOM HANDLER (No changes) ---
   socket.on('join_movie_room', ({ room, userName }) => {
     socket.join(room);
     if (!rooms[room]) rooms[room] = [];
@@ -59,13 +59,40 @@ io.on('connection', (socket) => {
     socket.data.name = userName;
   });
 
+  // ✅ --- NEW HANDLER FOR SCREEN SHARE ---
+  // This handles the 'join_screen_room' event from your new js/share.js
+  socket.on('join_screen_room', ({ room, userName }) => {
+    socket.join(room);
+    if (!rooms[room]) rooms[room] = [];
+
+    // Send the list of existing users to the new user
+    const existingVoiceUsers = rooms[room]
+      .filter(u => u.voiceReady)
+      .map(u => u.id);
+    socket.emit('existing-voice-users', existingVoiceUsers);
+
+    // Add the new user to the room's list
+    rooms[room].push({ id: socket.id, name: userName, voiceReady: false });
+    console.log(`${userName} (${socket.id}) joined SCREEN room: ${room}`);
+
+    // Tell everyone in the room about the new user list
+    const userNames = rooms[room].map(u => u.name);
+    io.to(room).emit('update_users', userNames);
+
+    // Save room and name data to the socket for cleanup on disconnect
+    socket.data.room = room;
+    socket.data.name = userName;
+  });
+
+
   socket.on("request_movie_users", ({ room }) => {
     const users = rooms[room]?.map(u => u.id) || [];
     console.log("request_movie_users from", socket.id, "->", users);
     socket.emit("movie-users", users.filter(id => id !== socket.id));
   });
 
-  // --- MIC / VOICE SIGNALING ---
+  // --- MIC / VOICE SIGNALING (No changes) ---
+  // This will work for all 3 rooms
   socket.on('ready-for-voice', ({ room }) => {
     const user = rooms[room]?.find(u => u.id === socket.id);
     if (user) user.voiceReady = true;
@@ -86,9 +113,8 @@ io.on('connection', (socket) => {
     socket.to(data.to).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
   });
 
-  // --- 🎬 VIDEO SYNC EVENTS (FIXED VERSION) ---
-  // 🔹 Use io.to() to broadcast to EVERYONE (including sender) 🔹
-  
+  // --- 🎬 VIDEO SYNC EVENTS (No changes) ---
+  // These are only for the movie room, and will not be called by the screen share room
   socket.on('video_play', (data) => {
     io.to(data.room).emit('video_play');
   });
@@ -101,7 +127,6 @@ io.on('connection', (socket) => {
     io.to(data.room).emit('video_seek', data.time);
   });
 
-  // ✅ ADD THESE TWO HANDLERS (required by watch.js)
   socket.on('video_duration', (data) => {
     io.to(data.room).emit('video_duration', data.duration);
   });
@@ -110,7 +135,7 @@ io.on('connection', (socket) => {
     io.to(data.room).emit('video_timeupdate', data.time);
   });
 
-  // --- DRAW EVENTS ---
+  // --- DRAW EVENTS (No changes) ---
   socket.on('draw', (data) => {
     socket.to(data.room).emit('draw', data);
   });
@@ -121,7 +146,8 @@ io.on('connection', (socket) => {
     socket.to(data.room).emit('undo', { state: data.state });
   });
 
-  // --- DISCONNECT CLEANUP ---
+  // --- DISCONNECT CLEANUP (No changes) ---
+  // This will work for all 3 rooms
   socket.on('disconnect', () => {
     const room = socket.data.room;
     console.log(`User disconnected: ${socket.id}`);
