@@ -51,7 +51,6 @@ io.on('connection', (socket) => {
     const userNames = rooms[room].map(u => u.name);
     io.to(room).emit('update_users', userNames);
 
-    // ✅ tell both sides who to talk to
     const otherUsers = rooms[room].map(u => u.id).filter(id => id !== socket.id);
     socket.emit("movie-users", otherUsers);
     socket.to(room).emit("movie-users", [socket.id]);
@@ -88,31 +87,28 @@ io.on('connection', (socket) => {
   });
 
   // --- 🎬 VIDEO SYNC EVENTS (FIXED VERSION) ---
-  // 🔹 These now broadcast to everyone EXCEPT the sender 🔹
+  // 🔹 Use io.to() to broadcast to EVERYONE (including sender) 🔹
+  
   socket.on('video_play', (data) => {
-    socket.to(data.room).emit('video_play');
+    io.to(data.room).emit('video_play');
   });
 
   socket.on('video_pause', (data) => {
-    socket.to(data.room).emit('video_pause');
+    io.to(data.room).emit('video_pause');
   });
 
   socket.on('video_seek', (data) => {
-    socket.to(data.room).emit('video_seek', data.time);
+    io.to(data.room).emit('video_seek', data.time);
   });
-  // ... after socket.on('video_seek', ...)
 
-  // ✅ NEW: Tell everyone the video's total length
-  socket.on('video_duration', (data) => {
-    socket.to(data.room).emit('video_duration', data.duration);
-  });
+  // ✅ ADD THESE TWO HANDLERS (required by watch.js)
+  socket.on('video_duration', (data) => {
+    io.to(data.room).emit('video_duration', data.duration);
+  });
 
-  // ✅ NEW: Sync the broadcaster's current time to everyone
-  socket.on('video_timeupdate', (data) => {
-    socket.to(data.room).emit('video_timeupdate', data.time);
-  });
-
-// ... before socket.on('draw', ...)
+  socket.on('video_timeupdate', (data) => {
+    io.to(data.room).emit('video_timeupdate', data.time);
+  });
 
   // --- DRAW EVENTS ---
   socket.on('draw', (data) => {
@@ -145,6 +141,3 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`TwinCanvas server running on http://localhost:${PORT}`);
 });
-
-
-
