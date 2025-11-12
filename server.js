@@ -100,12 +100,6 @@ io.on('connection', (socket) => {
   socket.on('video_seek', (data) => {
     socket.to(data.room).emit('video_seek', data.time);
   });
-  // ... after socket.on('video_seek', ...)
-
-  // --- 🎬 NEW EVENT TO SYNC DURATION ---
-  socket.on('video_duration', (data) => {
-    socket.to(data.room).emit('video_duration', data.duration);
-  });
 
 // ... before socket.on('draw', ...)
 
@@ -140,4 +134,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`TwinCanvas server running on http://localhost:${PORT}`);
 });
+
 
