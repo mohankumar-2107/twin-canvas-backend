@@ -10,7 +10,6 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
-// One unified rooms map is fine because we store {id,name,voiceReady}
 const rooms = {}; // { [room]: [{ id, name, voiceReady }] }
 
 io.on('connection', (socket) => {
@@ -52,25 +51,22 @@ io.on('connection', (socket) => {
     const userNames = rooms[room].map(u => u.name);
     io.to(room).emit('update_users', userNames);
 
-    // ✅ NEW: tell both sides who to talk to (covers all join/upload orders)
+    // ✅ tell both sides who to talk to
     const otherUsers = rooms[room].map(u => u.id).filter(id => id !== socket.id);
-    // Send the existing users list to the newcomer (so they can send offers)
     socket.emit("movie-users", otherUsers);
-    // Tell existing users that a new user arrived (so the current broadcaster can send them the movie)
     socket.to(room).emit("movie-users", [socket.id]);
 
     socket.data.room = room;
     socket.data.name = userName;
   });
 
-  // ✅ Optional: explicit request (used when uploader chose a file before peers existed)
   socket.on("request_movie_users", ({ room }) => {
     const users = rooms[room]?.map(u => u.id) || [];
     console.log("request_movie_users from", socket.id, "->", users);
     socket.emit("movie-users", users.filter(id => id !== socket.id));
   });
 
-  // --- MIC / VOICE SIGNALING (used by both drawing & movie pages) ---
+  // --- MIC / VOICE SIGNALING ---
   socket.on('ready-for-voice', ({ room }) => {
     const user = rooms[room]?.find(u => u.id === socket.id);
     if (user) user.voiceReady = true;
@@ -78,7 +74,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('voice-offer', (data) => {
-    // used for both movie and mic in your client
     console.log("voice-offer FROM", socket.id, "TO", data.to);
     socket.to(data.to).emit('voice-offer', { from: socket.id, offer: data.offer });
   });
@@ -92,17 +87,18 @@ io.on('connection', (socket) => {
     socket.to(data.to).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
   });
 
-  // --- VIDEO SYNC EVENTS ---
+  // --- 🎬 VIDEO SYNC EVENTS (FIXED VERSION) ---
+  // 🔹 These now broadcast to everyone EXCEPT the sender 🔹
   socket.on('video_play', (data) => {
-    io.to(data.room).emit('video_play');
+    socket.to(data.room).emit('video_play');
   });
 
   socket.on('video_pause', (data) => {
-    io.to(data.room).emit('video_pause');
+    socket.to(data.room).emit('video_pause');
   });
 
   socket.on('video_seek', (data) => {
-    io.to(data.room).emit('video_seek', data.time);
+    socket.to(data.room).emit('video_seek', data.time);
   });
 
   // --- DRAW EVENTS ---
