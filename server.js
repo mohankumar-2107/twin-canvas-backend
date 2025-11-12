@@ -100,6 +100,17 @@ io.on('connection', (socket) => {
   socket.on('video_seek', (data) => {
     socket.to(data.room).emit('video_seek', data.time);
   });
+  // ... after socket.on('video_seek', ...)
+
+  // ✅ NEW: Tell everyone the video's total length
+  socket.on('video_duration', (data) => {
+    socket.to(data.room).emit('video_duration', data.duration);
+  });
+
+  // ✅ NEW: Sync the broadcaster's current time to everyone
+  socket.on('video_timeupdate', (data) => {
+    socket.to(data.room).emit('video_timeupdate', data.time);
+  });
 
 // ... before socket.on('draw', ...)
 
@@ -134,5 +145,6 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`TwinCanvas server running on http://localhost:${PORT}`);
 });
+
 
 
